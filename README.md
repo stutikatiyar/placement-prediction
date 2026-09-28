@@ -1,4 +1,4 @@
-# ⚡ NEXUS // CareerPulse AI
+# ⚡ Student Placement Prediction System
 ### *Enterprise-Grade Student Placement Readiness & Compensation Band Engine*
 
 [![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11-00f2fe?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
