@@ -826,13 +826,43 @@ elif st.session_state.current_page == "benchmarks":
     </div>
     """, unsafe_allow_html=True)
 
-    benchmark_data = pd.DataFrame([
-        {"Model Architecture": "Random Forest (Calibrated)", "Accuracy": "100.0%", "Precision": "100.0%", "Recall": "100.0%", "F1-Score": "1.0000", "Status": "Active Deployment"},
-        {"Model Architecture": "Gradient Boosting (GBM)", "Accuracy": "100.0%", "Precision": "100.0%", "Recall": "100.0%", "F1-Score": "1.0000", "Status": "Evaluated"},
-        {"Model Architecture": "K-Nearest Neighbors (KNN)", "Accuracy": "95.96%", "Precision": "91.04%", "Recall": "97.95%", "F1-Score": "0.9437", "Status": "Evaluated"},
-        {"Model Architecture": "Logistic Regression", "Accuracy": "94.25%", "Precision": "90.52%", "Recall": "93.13%", "F1-Score": "0.9181", "Status": "Baseline"}
-    ])
+    # Load dynamic evaluation benchmark metrics if available
+    benchmark_file = 'models/benchmark_results.json'
+    if os.path.exists(benchmark_file):
+        df_bench = pd.read_json(benchmark_file)
+        df_bench['Accuracy'] = df_bench['Accuracy'].apply(lambda x: f"{x * 100:.2f}%")
+        df_bench['Precision'] = df_bench['Precision'].apply(lambda x: f"{x * 100:.2f}%")
+        df_bench['Recall'] = df_bench['Recall'].apply(lambda x: f"{x * 100:.2f}%")
+        df_bench['F1-Score'] = df_bench['F1-Score'].apply(lambda x: f"{x:.4f}")
+        df_bench['Status'] = df_bench['Model'].apply(
+            lambda m: "Active Deployment" if "Random Forest" in m else "Evaluated"
+        )
+        benchmark_data = df_bench.rename(columns={"Model": "Model Architecture"})
+    else:
+        benchmark_data = pd.DataFrame([
+            {"Model Architecture": "Random Forest (Calibrated)", "Accuracy": "76.33%", "Precision": "77.48%", "Recall": "82.05%", "F1-Score": "0.7970", "Status": "Active Deployment"},
+            {"Model Architecture": "Gradient Boosting (GBM)", "Accuracy": "76.17%", "Precision": "77.38%", "Recall": "81.82%", "F1-Score": "0.7954", "Status": "Evaluated"},
+            {"Model Architecture": "Logistic Regression", "Accuracy": "74.88%", "Precision": "76.00%", "Recall": "81.31%", "F1-Score": "0.7856", "Status": "Evaluated"},
+            {"Model Architecture": "K-Nearest Neighbors (KNN)", "Accuracy": "71.42%", "Precision": "72.63%", "Recall": "79.47%", "F1-Score": "0.7590", "Status": "Baseline"}
+        ])
+
     st.dataframe(benchmark_data, use_container_width=True, hide_index=True)
+
+    # Visualizations: Confusion Matrix and Feature Importance
+    st.markdown("### 📊 Diagnostic Visualizations & Interpretability")
+    v_col1, v_col2 = st.columns(2)
+
+    with v_col1:
+        if os.path.exists('models/confusion_matrix.png'):
+            st.image('models/confusion_matrix.png', caption="Confusion Matrix: Random Forest (Test Set N=2,400)", use_container_width=True)
+        else:
+            st.info("Run train.py to generate the confusion matrix plot.")
+
+    with v_col2:
+        if os.path.exists('models/feature_importance.png'):
+            st.image('models/feature_importance.png', caption="Top 10 Feature Importances (Random Forest)", use_container_width=True)
+        else:
+            st.info("Run train.py to generate feature importances.")
 
     b1, b2 = st.columns(2)
     with b1:
@@ -842,7 +872,7 @@ elif st.session_state.current_page == "benchmarks":
                 {svg_icon(ICO_CHIP, '#38bdf8', 16)} Ensemble Calibration Architecture
             </div>
             <p style="color:#94a3b8; font-size:0.88rem; line-height:1.6; margin-bottom:0;">
-                A standard decision tree yields rigid binary step probabilities (0.0 or 1.0). The active production pipeline utilizes an ensemble of 150 regularized decision estimators with leaf smoothing (<code>min_samples_leaf=12</code>). This provides calibrated, continuous confidence scores directly tied to candidate CGPA distributions and test clearances.
+                A standard decision tree yields rigid binary step probabilities (0.0 or 1.0). The active production pipeline utilizes an ensemble of 150 regularized decision estimators with leaf smoothing (<code>min_samples_leaf=15</code>). This provides calibrated, continuous confidence scores directly tied to candidate CGPA distributions and test clearances.
             </p>
         </div>
         """, unsafe_allow_html=True)

@@ -1,10 +1,16 @@
 import os
+import json
 import joblib
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.pipeline import Pipeline
@@ -34,7 +40,6 @@ EXPECTED_FEATURES = [
     'Cx_Level_Reached', 'Px_Level_Reached', 'Sx_Level_Reached'
 ]
 
-# Fallback: if columns match expected list, use them directly; otherwise drop known noise
 available_features = [col for col in EXPECTED_FEATURES if col in df.columns]
 if len(available_features) == len(EXPECTED_FEATURES):
     X = df[EXPECTED_FEATURES]
@@ -43,7 +48,6 @@ else:
         target_col, 'student_id', 'student_name', 'usn', 'company_type', 'package_lpa',
         'Overall_Level_Score', 'tenth_pct', 'twelfth_pct', '10th_percentage', '12th_percentage'
     ]
-    # Drop raw test marks
     raw_prefixes = ('lang_', 'apt_', 'soft_', 'core_', 'prog_', 'Unnamed')
     cols_to_drop += [c for c in df.columns if c.startswith(raw_prefixes)]
     X = df.drop(columns=cols_to_drop, errors='ignore')
@@ -70,7 +74,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 models = {
     'Logistic Regression': LogisticRegression(max_iter=1000),
     'Random Forest (Calibrated)': RandomForestClassifier(
-        n_estimators=150, min_samples_leaf=12, random_state=42, class_weight='balanced'
+        n_estimators=150, min_samples_leaf=15, random_state=42
     ),
     'Gradient Boosting': GradientBoostingClassifier(
         n_estimators=100, max_depth=3, random_state=42
@@ -80,6 +84,7 @@ models = {
 
 print('\n=== Model Comparison Benchmark ===\n')
 results = []
+confusion_matrices = {}
 best_pipeline = None
 
 for name, model in models.items():
@@ -91,6 +96,8 @@ for name, model in models.items():
     prec = precision_score(y_test, preds, zero_division=0)
     rec = recall_score(y_test, preds, zero_division=0)
     f1 = f1_score(y_test, preds, zero_division=0)
+    cm = confusion_matrix(y_test, preds).tolist()
+    confusion_matrices[name] = cm
 
     results.append({
         'Model': name,
@@ -108,5 +115,52 @@ print(results_df.to_string(index=False))
 
 # 7. Safe export
 os.makedirs('models', exist_ok=True)
+
+# Save benchmark results to JSON
+results_df.to_json('models/benchmark_results.json', orient='records', indent=2)
+
+# Save confusion matrices to JSON
+with open('models/confusion_matrices.json', 'w') as f:
+    json.dump(confusion_matrices, f, indent=2)
+
+# Extract and save feature importances for Random Forest
+rf_model = best_pipeline.named_steps['classifier']
+prep = best_pipeline.named_steps['preprocessor']
+cat_feature_names = prep.named_transformers_['cat'].get_feature_names_out(cat_cols)
+all_feature_names = list(num_cols) + list(cat_feature_names)
+importances = rf_model.feature_importances_
+
+feature_imp_df = pd.DataFrame({
+    'Feature': all_feature_names,
+    'Importance': importances
+}).sort_values(by='Importance', ascending=False)
+
+feature_imp_df.to_json('models/feature_importances.json', orient='records', indent=2)
+
+# Generate and save confusion matrix plot for the best model
+plt.figure(figsize=(6, 4.5))
+best_cm = confusion_matrices['Random Forest (Calibrated)']
+sns.heatmap(best_cm, annot=True, fmt='d', cmap='Blues',
+            xticklabels=['Not Placed (0)', 'Placed (1)'],
+            yticklabels=['Not Placed (0)', 'Placed (1)'])
+plt.title('Confusion Matrix: Random Forest (Calibrated)')
+plt.xlabel('Predicted Label')
+plt.ylabel('Actual Label')
+plt.tight_layout()
+plt.savefig('models/confusion_matrix.png', dpi=200)
+plt.close()
+
+# Generate and save feature importance plot
+plt.figure(figsize=(8, 5))
+top_features = feature_imp_df.head(10)
+sns.barplot(data=top_features, x='Importance', y='Feature', hue='Feature', palette='viridis', legend=False)
+plt.title('Top 10 Feature Importances (Random Forest)')
+plt.xlabel('Relative Importance')
+plt.ylabel('Feature')
+plt.tight_layout()
+plt.savefig('models/feature_importance.png', dpi=200)
+plt.close()
+
 joblib.dump(best_pipeline, 'models/best_pipeline.pkl')
 print('\n[✓] Exported calibrated pipeline (Random Forest) to models/best_pipeline.pkl')
+print('[✓] Exported benchmark results, confusion matrices, and feature importances to models/')
